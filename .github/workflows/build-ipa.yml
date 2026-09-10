@@ -66,9 +66,9 @@ jobs:
             echo "No valid .xcworkspace with contents.xcworkspacedata found. Did pod install run?"
             exit 1
           fi
-          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1;next}/^$/{flag=0}flag' | sed 's/^ *//' | head -n1)
-          if [ -z "$SCHEME" ]; then
-            echo "Could not detect a scheme from: "
+          SCHEME="WorkoutOffline"
+          if ! xcodebuild -list -workspace "$WORKSPACE" | grep -qx "        $SCHEME"; then
+            echo "Scheme '$SCHEME' not found. Available schemes:"
             xcodebuild -list -workspace "$WORKSPACE"
             exit 1
           fi
