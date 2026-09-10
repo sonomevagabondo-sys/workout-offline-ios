@@ -23,7 +23,7 @@ jobs:
           corepack prepare pnpm@9 --activate
 
       - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Expo prebuild (generate native ios project)
         working-directory: ${{ env.APP_DIR }}
