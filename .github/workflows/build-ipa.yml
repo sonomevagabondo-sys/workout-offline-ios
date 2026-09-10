@@ -22,7 +22,7 @@ jobs:
           corepack enable
           corepack prepare pnpm@9 --activate
 
-      - name: Configure pnpm flat node_modules (fix long asset paths for Windows sideload)
+      - name: Use flat node_modules layout (avoids Windows path-length limit)
         run: |
           echo "node-linker=hoisted" >> .npmrc
           echo "--- .npmrc contents ---"
@@ -30,6 +30,42 @@ jobs:
 
       - name: Install workspace dependencies
         run: pnpm install --no-frozen-lockfile
+
+      - name: Patch module resolution for Metro (hoisted monorepo layout)
+        run: |
+          APP_NM="$GITHUB_WORKSPACE/${{ env.APP_DIR }}/node_modules"
+          ROOT_NM="$GITHUB_WORKSPACE/node_modules"
+          mkdir -p "$APP_NM/@expo" "$ROOT_NM/@expo"
+
+          # 1) @expo/metro-config hoisted to workspace root: link it into the
+          #    app's node_modules so its peer `expo` resolves correctly.
+          if [ -d "$ROOT_NM/@expo/metro-config" ] && [ ! -e "$APP_NM/@expo/metro-config" ]; then
+            ln -s "$ROOT_NM/@expo/metro-config" "$APP_NM/@expo/metro-config"
+            echo "linked @expo/metro-config -> app node_modules"
+          else
+            echo "@expo/metro-config already in app node_modules (or not at root)"
+          fi
+
+          # 2) Expose key app packages at workspace root as a fallback for any
+          #    other hoisted tool that resolves relative to the root.
+          for pkg in expo expo-modules-core expo-asset expo-font react react-native "@expo/vector-icons"; do
+            if [ -e "$APP_NM/$pkg" ] && [ ! -e "$ROOT_NM/$pkg" ]; then
+              mkdir -p "$ROOT_NM/$(dirname "$pkg")"
+              ln -s "$APP_NM/$pkg" "$ROOT_NM/$pkg"
+              echo "linked $pkg -> workspace root node_modules"
+            else
+              echo "skip $pkg (already at root or missing in app)"
+            fi
+          done
+
+      - name: Pre-flight check - Metro can resolve expo (fails fast if broken)
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          node -e "console.log('expo resolved at:', require.resolve('expo/package.json'))"
+          cd "$GITHUB_WORKSPACE/${{ env.APP_DIR }}"
+          node -e "console.log('expo resolved at:', require.resolve('expo/package.json'))"
+          node -e "console.log('metro-config resolved at:', require.resolve('@expo/metro-config/package.json'))"
+          node -e "console.log('react-native resolved at:', require.resolve('react-native/package.json'))"
 
       - name: Expo prebuild (generate native ios project)
         working-directory: ${{ env.APP_DIR }}
