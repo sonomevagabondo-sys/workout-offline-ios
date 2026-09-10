@@ -1,0 +1,70 @@
+name: Build unsigned iOS IPA (workout-offline)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+    env:
+      APP_DIR: artifacts/workout-offline
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Expo prebuild (generate native ios project)
+        working-directory: ${{ env.APP_DIR }}
+        run: pnpm exec expo prebuild --platform ios --no-install --clean
+
+      - name: Install CocoaPods
+        working-directory: ${{ env.APP_DIR }}/ios
+        run: pod install --repo-update
+
+      - name: Show available schemes (debug helper)
+        working-directory: ${{ env.APP_DIR }}/ios
+        run: xcodebuild -list -workspace *.xcworkspace
+
+      - name: Archive app (unsigned)
+        working-directory: ${{ env.APP_DIR }}/ios
+        run: |
+          WORKSPACE=$(ls *.xcworkspace | head -n1)
+          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" -json | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).workspace.schemes[0]))")
+          echo "Using workspace=$WORKSPACE scheme=$SCHEME"
+          xcodebuild clean archive \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath "$PWD/build/App.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: Package .ipa (unsigned)
+        working-directory: ${{ env.APP_DIR }}/ios
+        run: |
+          mkdir -p build/Payload
+          cp -r build/App.xcarchive/Products/Applications/*.app build/Payload/
+          cd build
+          zip -r WorkoutOffline-unsigned.ipa Payload
+          ls -la WorkoutOffline-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorkoutOffline-unsigned-ipa
+          path: ${{ env.APP_DIR }}/ios/build/WorkoutOffline-unsigned.ipa
