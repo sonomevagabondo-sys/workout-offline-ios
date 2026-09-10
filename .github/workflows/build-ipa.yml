@@ -52,7 +52,7 @@ jobs:
         working-directory: ${{ env.APP_DIR }}/ios
         run: xcodebuild -list -workspace *.xcworkspace
 
-      - name: Archive app (unsigned)
+      - name: Build app (unsigned)
         working-directory: ${{ env.APP_DIR }}/ios
         run: |
           WORKSPACE=""
@@ -73,32 +73,30 @@ jobs:
             exit 1
           fi
           echo "Using workspace=$WORKSPACE scheme=$SCHEME"
-          xcodebuild clean archive \
+          xcodebuild clean build \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
             -configuration Release \
             -sdk iphoneos \
-            -archivePath "$PWD/build/App.xcarchive" \
+            -derivedDataPath "$PWD/build/DerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            SKIP_INSTALL=NO \
-            BUILD_LIBRARY_FOR_DISTRIBUTION=NO
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-      - name: Debug - inspect archive contents
+      - name: Debug - inspect build products
         working-directory: ${{ env.APP_DIR }}/ios
         run: |
-          echo "--- Full tree of the .xcarchive ---"
-          find build/App.xcarchive -maxdepth 4
-          echo "--- Any .app anywhere in the archive ---"
-          find build/App.xcarchive -iname "*.app" -maxdepth 6
+          echo "--- Contents of Release-iphoneos products dir ---"
+          ls -la build/DerivedData/Build/Products/Release-iphoneos/ || echo "MISSING products dir"
+          echo "--- Any .app anywhere under DerivedData ---"
+          find build/DerivedData -iname "*.app" -maxdepth 6
 
       - name: Package .ipa (unsigned)
         working-directory: ${{ env.APP_DIR }}/ios
         run: |
           mkdir -p build/Payload
-          cp -r build/App.xcarchive/Products/Applications/*.app build/Payload/
+          cp -r build/DerivedData/Build/Products/Release-iphoneos/*.app build/Payload/
           cd build
           zip -r WorkoutOffline-unsigned.ipa Payload
           ls -la WorkoutOffline-unsigned.ipa
