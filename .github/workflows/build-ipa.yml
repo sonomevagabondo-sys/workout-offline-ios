@@ -22,8 +22,11 @@ jobs:
           corepack enable
           corepack prepare pnpm@9 --activate
 
-      - name: Use flat node_modules layout (avoids Windows path-length limit)
-        run: echo "node-linker=hoisted" >> .npmrc
+      - name: Configure pnpm flat node_modules (fix long asset paths for Windows sideload)
+        run: |
+          echo "node-linker=hoisted" >> .npmrc
+          echo "--- .npmrc contents ---"
+          cat .npmrc
 
       - name: Install workspace dependencies
         run: pnpm install --no-frozen-lockfile
