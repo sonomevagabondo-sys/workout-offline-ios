@@ -33,6 +33,21 @@ jobs:
         working-directory: ${{ env.APP_DIR }}/ios
         run: pod install --repo-update
 
+      - name: Debug - inspect generated iOS project
+        working-directory: ${{ env.APP_DIR }}/ios
+        run: |
+          echo "--- Top-level contents of ios/ ---"
+          ls -la
+          echo "--- All .xcworkspace found (recursive) ---"
+          find . -iname "*.xcworkspace" -maxdepth 3
+          echo "--- Checking each for contents.xcworkspacedata ---"
+          for w in $(find . -iname "*.xcworkspace" -maxdepth 3); do
+            echo "Workspace: $w"
+            ls -la "$w" || true
+          done
+          echo "--- Podfile.lock present? ---"
+          ls -la Podfile.lock 2>&1 || echo "MISSING Podfile.lock"
+
       - name: Show available schemes (debug helper)
         working-directory: ${{ env.APP_DIR }}/ios
         run: xcodebuild -list -workspace *.xcworkspace
@@ -40,8 +55,23 @@ jobs:
       - name: Archive app (unsigned)
         working-directory: ${{ env.APP_DIR }}/ios
         run: |
-          WORKSPACE=$(ls *.xcworkspace | head -n1)
-          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" -json | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).workspace.schemes[0]))")
+          WORKSPACE=""
+          for w in *.xcworkspace; do
+            if [ -f "$w/contents.xcworkspacedata" ]; then
+              WORKSPACE="$w"
+              break
+            fi
+          done
+          if [ -z "$WORKSPACE" ]; then
+            echo "No valid .xcworkspace with contents.xcworkspacedata found. Did pod install run?"
+            exit 1
+          fi
+          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1;next}/^$/{flag=0}flag' | sed 's/^ *//' | head -n1)
+          if [ -z "$SCHEME" ]; then
+            echo "Could not detect a scheme from: "
+            xcodebuild -list -workspace "$WORKSPACE"
+            exit 1
+          fi
           echo "Using workspace=$WORKSPACE scheme=$SCHEME"
           xcodebuild clean archive \
             -workspace "$WORKSPACE" \
